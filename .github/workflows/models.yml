@@ -1,0 +1,45 @@
+name: Build AI models
+
+# Exports the pretrained Demucs 6-stem model to ONNX, verifies it against the
+# PyTorch reference and publishes it as assets of the `models-v1` release.
+on:
+  push:
+    tags: ["models-v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install export tooling
+        run: |
+          pip install torch==2.4.1 torchaudio==2.4.1 --index-url https://download.pytorch.org/whl/cpu
+          pip install demucs==4.0.1 onnx onnxruntime einops numpy
+
+      - name: Export to ONNX (with built-in verification)
+        run: python tools/export_onnx.py --out dist/models
+
+      - name: Verify full engine against PyTorch demucs
+        run: python tests/test_equivalence.py dist/models --seconds 25
+
+      - name: Publish to models-v1 release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: models-v1
+          name: AI models v1
+          body: |
+            AI model files for Bunnys Audio Separator (downloaded automatically by the plugin on first use).
+            Demucs htdemucs_6s by Meta AI Research (MIT license), converted to ONNX.
+          files: |
+            dist/models/htdemucs_6s.onnx
+            dist/models/models.json

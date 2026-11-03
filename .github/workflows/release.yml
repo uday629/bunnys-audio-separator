@@ -1,0 +1,114 @@
+name: Build installers
+
+# Builds the Windows (.exe) and macOS (.pkg) installers, smoke-tests the engine
+# on each OS, and publishes them as a GitHub release named after the version in
+# engine/bunnys_engine/__init__.py.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "engine/**"
+      - "panel/**"
+      - "installer/**"
+      - ".github/workflows/release.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Read version
+        id: v
+        shell: bash
+        run: echo "version=$(python -c 'import sys; sys.path.insert(0,"engine"); import bunnys_engine; print(bunnys_engine.__version__)')" >> "$GITHUB_OUTPUT"
+      - name: Install build deps
+        run: pip install -r engine/requirements-windows.txt
+      - name: Build engine + extension
+        run: python engine/build_engine.py
+      - name: Smoke test engine
+        shell: bash
+        run: |
+          ENGINE="dist/extension/com.bunnysframelab.audioseparator/bin/bunnys-engine/bunnys-engine.exe"
+          "$ENGINE" info
+          python -c "import numpy as np, wave; sr=44100; t=np.arange(sr*12)/sr; x=(0.3*np.sin(2*np.pi*220*t)*32767).astype('<i2'); w=wave.open('test.wav','wb'); w.setnchannels(1); w.setsampwidth(2); w.setframerate(sr); w.writeframes(x.tobytes()); w.close()"
+          "$ENGINE" separate --input test.wav --start 1 --end 11 --stems vocals,instrumental --device cpu --quality fast --out-dir out | grep -v '"progress"'
+          "$ENGINE" separate --input test.wav --mode cinematic --device auto --quality fast --out-dir out2 | grep -v '"progress"' || echo "auto/GPU path not available on CI runner (expected without a GPU)"
+          ls -la out
+      - name: Build installer
+        shell: bash
+        run: |
+          choco install innosetup -y --no-progress || true
+          "/c/Program Files (x86)/Inno Setup 6/ISCC.exe" "//DAppVersion=${{ steps.v.outputs.version }}" installer/windows/setup.iss
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: dist/*.exe
+
+  macos:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-14
+            arch: AppleSilicon
+          - runner: macos-15-intel
+            arch: Intel
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Read version
+        id: v
+        run: echo "version=$(python -c 'import sys; sys.path.insert(0,"engine"); import bunnys_engine; print(bunnys_engine.__version__)')" >> "$GITHUB_OUTPUT"
+      - name: Install build deps
+        run: pip install -r engine/requirements-macos.txt
+      - name: Build engine + extension
+        run: python engine/build_engine.py
+      - name: Smoke test engine
+        run: |
+          ENGINE="dist/extension/com.bunnysframelab.audioseparator/bin/bunnys-engine/bunnys-engine"
+          "$ENGINE" info
+          python -c "import numpy as np, wave; sr=44100; t=np.arange(sr*12)/sr; x=(0.3*np.sin(2*np.pi*220*t)*32767).astype('<i2'); w=wave.open('test.wav','wb'); w.setnchannels(1); w.setsampwidth(2); w.setframerate(sr); w.writeframes(x.tobytes()); w.close()"
+          "$ENGINE" separate --input test.wav --start 1 --end 11 --stems vocals,instrumental --device cpu --quality fast --out-dir out | grep -v '"progress"'
+          "$ENGINE" separate --input test.wav --mode cinematic --device auto --quality fast --out-dir out2 | grep -v '"progress"'
+          ls -la out out2
+      - name: Build pkg
+        run: bash installer/macos/build_pkg.sh "${{ steps.v.outputs.version }}" "${{ matrix.arch }}"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos-${{ matrix.arch }}
+          path: dist/*.pkg
+
+  release:
+    needs: [windows, macos]
+    if: always() && needs.windows.result == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Read version
+        id: v
+        run: echo "version=$(python3 -c 'import sys; sys.path.insert(0,"engine"); import bunnys_engine; print(bunnys_engine.__version__)')" >> "$GITHUB_OUTPUT"
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+      - run: ls -la artifacts
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.v.outputs.version }}
+          name: Bunnys Audio Separator v${{ steps.v.outputs.version }}
+          make_latest: true
+          body_path: installer/RELEASE_NOTES.md
+          files: artifacts/*

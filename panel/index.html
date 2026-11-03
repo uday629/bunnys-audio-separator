@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Bunnys Audio Separator</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <header class="brand">
+    <img class="brand-logo" src="assets/logo.png" alt="Bunnys Framelab logo">
+    <div class="brand-text">
+      <h1>Bunnys Audio Separator</h1>
+      <p>by Bunnys Framelab</p>
+    </div>
+  </header>
+
+  <main>
+    <nav class="modes" role="tablist" aria-label="Separation mode">
+      <button class="mode active" role="tab" data-mode="music" aria-selected="true">
+        <span class="mode-title">Music Stems</span>
+        <span class="mode-sub">Vocals · Drums · Bass · Guitar · Piano</span>
+      </button>
+      <button class="mode" role="tab" data-mode="cinematic" aria-selected="false">
+        <span class="mode-title">Vocal · SFX · Music</span>
+        <span class="mode-sub">For videos, vlogs &amp; films</span>
+      </button>
+    </nav>
+
+    <section class="card" id="stems-music" data-stems="music">
+      <div class="card-head">
+        <h2>Choose stems</h2>
+        <div class="presets">
+          <button class="chip-btn" data-preset="vocals,instrumental">Vocal + Music</button>
+          <button class="chip-btn" data-preset="vocals,drums,bass,guitar,piano,other">All</button>
+          <button class="chip-btn" data-preset="">Clear</button>
+        </div>
+      </div>
+      <div class="stems">
+        <label class="stem"><input type="checkbox" value="vocals" checked><span>Vocals</span></label>
+        <label class="stem"><input type="checkbox" value="instrumental" checked><span>Instrumental</span></label>
+        <label class="stem"><input type="checkbox" value="drums"><span>Drums</span></label>
+        <label class="stem"><input type="checkbox" value="bass"><span>Bass</span></label>
+        <label class="stem"><input type="checkbox" value="guitar"><span>Guitar</span></label>
+        <label class="stem"><input type="checkbox" value="piano"><span>Piano</span></label>
+        <label class="stem"><input type="checkbox" value="other"><span>Other</span></label>
+      </div>
+      <p class="hint">Instrumental = everything except vocals.</p>
+    </section>
+
+    <section class="card hidden" id="stems-cinematic" data-stems="cinematic">
+      <div class="card-head">
+        <h2>Choose stems <span class="badge">Beta</span></h2>
+      </div>
+      <div class="stems">
+        <label class="stem"><input type="checkbox" value="dialogue" checked><span>Vocal / Dialogue</span></label>
+        <label class="stem"><input type="checkbox" value="sfx" checked><span>SFX</span></label>
+        <label class="stem"><input type="checkbox" value="music" checked><span>Music</span></label>
+      </div>
+      <p class="hint">Beta: SFX/music split works best on clearly separated sounds.</p>
+    </section>
+
+    <section class="card">
+      <h2>Processing</h2>
+      <div class="row">
+        <span class="row-label">Device</span>
+        <div class="seg" data-setting="device">
+          <button data-value="auto" class="active">Auto</button>
+          <button data-value="gpu">GPU</button>
+          <button data-value="cpu">CPU</button>
+        </div>
+      </div>
+      <div class="row">
+        <span class="row-label">Quality</span>
+        <div class="seg" data-setting="quality">
+          <button data-value="fast">Fast</button>
+          <button data-value="balanced" class="active">Balanced</button>
+          <button data-value="best">Best</button>
+        </div>
+      </div>
+      <label class="toggle">
+        <input type="checkbox" id="mute-original">
+        <span>Mute original clip after separating</span>
+      </label>
+      <p class="device-line" id="device-line">Checking your hardware…</p>
+    </section>
+
+    <button class="go" id="go">
+      <span id="go-label">Separate selected clip</span>
+    </button>
+
+    <section class="progress hidden" id="progress" aria-live="polite">
+      <div class="bar"><div class="bar-fill" id="bar-fill"></div></div>
+      <div class="progress-row">
+        <span id="progress-text">Starting…</span>
+        <button class="link-btn" id="cancel">Cancel</button>
+      </div>
+    </section>
+
+    <section class="result hidden" id="result" aria-live="polite"></section>
+  </main>
+
+  <footer>
+    <p>Created by <strong>Bunnys Framelab</strong></p>
+    <div class="links">
+      <a href="#" data-url="https://framelabmedia.odoo.com">framelabmedia.odoo.com</a>
+      <span class="dot">•</span>
+      <a href="#" data-url="https://www.instagram.com/bunnysframelab/">Instagram @bunnysframelab</a>
+    </div>
+  </footer>
+
+  <script src="js/cep.js"></script>
+  <script src="js/main.js"></script>
+</body>
+</html>

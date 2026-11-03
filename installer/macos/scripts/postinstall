@@ -1,0 +1,16 @@
+#!/bin/bash
+# Runs as root after the package is installed.
+EXT="/Library/Application Support/Adobe/CEP/extensions/com.bunnysframelab.audioseparator"
+
+chmod -R a+rX "$EXT"
+chmod +x "$EXT/bin/bunnys-engine/bunnys-engine"
+xattr -dr com.apple.quarantine "$EXT" 2>/dev/null || true
+
+# Allow this self-distributed panel to load in every recent Premiere Pro version.
+CONSOLE_USER="$(stat -f%Su /dev/console)"
+if [ -n "$CONSOLE_USER" ] && [ "$CONSOLE_USER" != "root" ]; then
+  for v in 9 10 11 12 13; do
+    sudo -u "$CONSOLE_USER" defaults write "com.adobe.CSXS.$v" PlayerDebugMode 1 || true
+  done
+fi
+exit 0

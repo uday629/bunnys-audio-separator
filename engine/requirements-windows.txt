@@ -1,0 +1,4 @@
+numpy>=1.26,<3
+onnxruntime-directml>=1.18
+av>=12
+pyinstaller>=6.6

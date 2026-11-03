@@ -4,7 +4,12 @@ name: Build AI models
 # PyTorch reference and publishes it as assets of the `models-v1` release.
 on:
   push:
-    tags: ["models-v*"]
+    branches: [main]
+    paths:
+      - "tools/export_onnx.py"
+      - "tools/onnx_core.py"
+      - "engine/bunnys_engine/dsp.py"
+      - ".github/workflows/models.yml"
   workflow_dispatch:
 
 permissions:

@@ -68,13 +68,13 @@ BAS.getSelection = function () {
             for (var t = 0; t < seq.audioTracks.numTracks && trackIndex < 0; t++) {
                 var tr = seq.audioTracks[t];
                 for (var c = 0; c < tr.clips.numItems; c++) {
-                    var tc = tr.clips[c];
-                    if (tc.nodeId === clip.nodeId) { trackIndex = t; break; }
+                    if (BAS._sameClip(tr.clips[c], clip.nodeId, clip.start.seconds, media)) { trackIndex = t; break; }
                 }
             }
         }
-        var speed = 1;
-        try { speed = clip.getSpeed(); } catch (e1) {}
+        // speed = source duration / timeline duration (robust across versions)
+        var tlDur = clip.end.seconds - clip.start.seconds;
+        var speed = tlDur > 0 ? (clip.outPoint.seconds - clip.inPoint.seconds) / tlDur : 1;
 
         return BAS._ok({
             mediaPath: media,
@@ -85,13 +85,22 @@ BAS.getSelection = function () {
             end: clip.end.seconds,
             speed: speed,
             trackIndex: trackIndex,
-            nodeId: clip.nodeId,
+            nodeId: clip.nodeId || '',
             projectPath: app.project.path || '',
             sequence: seq.name
         });
     } catch (e) {
         return BAS._err('Could not read selection: ' + e.toString());
     }
+};
+
+/** Same timeline clip? Uses nodeId when available, else position + media path. */
+BAS._sameClip = function (a, id, start, media) {
+    if (id) return a.nodeId === id;
+    try {
+        return Math.abs(a.start.seconds - start) < 0.0005 &&
+            BAS._norm(a.projectItem.getMediaPath()) === BAS._norm(media);
+    } catch (e) { return false; }
 };
 
 BAS._findBin = function (name) {
@@ -185,16 +194,22 @@ BAS.placeStems = function (argJson) {
         var placed = [];
         for (i = 0; i < items.length; i++) {
             var track = seq.audioTracks[free[i]];
-            track.overwriteClip(items[i], start);
+            try {
+                track.overwriteClip(items[i], start);
+            } catch (e5) {
+                var tm = new Time();
+                tm.seconds = start;
+                track.overwriteClip(items[i], tm);
+            }
             placed.push(free[i] + 1);
         }
 
-        if (a.muteOriginal && a.nodeId) {
+        if (a.muteOriginal) {
             var muted = false;
             for (var t = 0; t < seq.audioTracks.numTracks && !muted; t++) {
                 var tr = seq.audioTracks[t];
                 for (var c = 0; c < tr.clips.numItems; c++) {
-                    if (tr.clips[c].nodeId === a.nodeId) {
+                    if (BAS._sameClip(tr.clips[c], a.nodeId, a.start, a.mediaPath)) {
                         try { tr.clips[c].disabled = true; muted = true; } catch (e4) {}
                         break;
                     }

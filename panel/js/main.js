@@ -215,6 +215,10 @@
     Host.call("getSelection").then(function (res) {
       if (!res.ok) throw new Error(res.error);
       sel = res;
+      if (sel.speed && Math.abs(sel.speed - 1) > 0.001) {
+        throw new Error("This clip has a speed change (" + Math.round(sel.speed * 100) + "%). " +
+          "Set the clip speed to 100% before separating — speed-changed clips are not supported yet.");
+      }
       var args = [
         "separate",
         "--input", sel.mediaPath,
@@ -244,6 +248,7 @@
         duration: done.audio_seconds,
         trackIndex: sel.trackIndex,
         nodeId: sel.nodeId,
+        mediaPath: sel.mediaPath,
         muteOriginal: $("#mute-original").checked
       }).then(function (placed) { return { done: done, placed: placed }; });
     }).then(function (r) {

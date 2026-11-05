@@ -1,0 +1,52 @@
+name: Verify BandIt (quick)
+
+# Exports both separation models to ONNX (fp32 + fp16), verifies them against
+# the original PyTorch implementations and publishes them as assets of the
+# `models-v2` release (downloaded by the plugin on first use).
+on:
+  push:
+    branches: [main]
+    paths:
+      - "tests/verify_bandit_reference.py"
+      - ".github/workflows/verify-bandit.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  MSST_RELEASE: https://github.com/ZFTurbo/Music-Source-Separation-Training/releases/download/v.1.0.3
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install export tooling
+        run: |
+          pip install torch==2.4.1 torchaudio==2.4.1 --index-url https://download.pytorch.org/whl/cpu
+          pip install demucs==4.0.1 onnx onnxruntime einops numpy pyyaml
+          # only needed to import the original BandIt code for the reference check
+          pip install pytorch_lightning torchmetrics librosa spafe ml_collections pedalboard pyloudnorm tqdm
+
+      - name: Fetch BandIt Plus (DnR) weights and original code
+        run: |
+          mkdir -p ext
+          curl -sSfL -o ext/bandit.yaml "$MSST_RELEASE/config_dnr_bandit_bsrnn_multi_mus64.yaml"
+          curl -sSfL -o ext/bandit.chpt "$MSST_RELEASE/model_bandit_plus_dnr_sdr_11.47.chpt"
+          git clone --depth 1 https://github.com/ZFTurbo/Music-Source-Separation-Training ext/mss
+
+      - name: Export to ONNX (with built-in verification)
+        run: |
+          python tools/export_onnx.py --out dist/models \
+            --bandit-config ext/bandit.yaml --bandit-ckpt ext/bandit.chpt --only bandit_dnr
+
+      - name: Verify BandIt against the original implementation
+        run: python tests/verify_bandit_reference.py ext/mss ext/bandit.yaml ext/bandit.chpt dist/models
+

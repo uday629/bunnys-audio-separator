@@ -19,6 +19,7 @@ sys.path.insert(0, os.path.join(ROOT, "engine"))
 def main():
     repo, cfg_path, ckpt, models_dir = sys.argv[1:5]
     sys.path.insert(0, repo)
+    sys.path.insert(0, os.path.join(repo, "models", "bandit"))
     # `asteroid` is only used for training losses; stub it so we don't pull it in.
     import types
     stub = types.ModuleType("asteroid")
@@ -52,10 +53,17 @@ def main():
         ours = dsp.bandit_ispec(out, 1, 2, L)
         rel = float(np.abs(ours - ref).max() / np.abs(ref).max())
         print(f"[reference] bandit {variant}: rel err vs original implementation {rel:.3e}")
+        print(f"::notice title=BandIt {variant} vs original::rel err {rel:.3e}")
         if rel > tol or not np.isfinite(ours).all():
             raise SystemExit(f"BandIt {variant} does not match the original implementation")
     print("OK: BandIt ONNX matches the original ZFTurbo/BandIt implementation")
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except BaseException as e:  # surface details as a GitHub annotation
+        import traceback
+        tb = traceback.format_exc().strip().replace("\n", "%0A")
+        print(f"::error title=BandIt reference check::{tb[-3000:]}")
+        raise

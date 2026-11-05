@@ -11,7 +11,6 @@ on:
       - "tools/onnx_core.py"
       - "tools/bandit_model.py"
       - "engine/bunnys_engine/dsp.py"
-      - "tests/verify_bandit_reference.py"
       - ".github/workflows/models.yml"
   workflow_dispatch:
 
@@ -37,7 +36,7 @@ jobs:
           pip install torch==2.4.1 torchaudio==2.4.1 --index-url https://download.pytorch.org/whl/cpu
           pip install demucs==4.0.1 onnx onnxruntime einops numpy pyyaml
           # only needed to import the original BandIt code for the reference check
-          pip install pytorch_lightning torchmetrics librosa spafe ml_collections
+          pip install pytorch_lightning torchmetrics librosa spafe ml_collections pedalboard pyloudnorm tqdm
 
       - name: Fetch BandIt Plus (DnR) weights and original code
         run: |

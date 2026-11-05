@@ -18,7 +18,7 @@ sys.path.insert(0, os.path.join(ROOT, "engine"))
 sys.path.insert(0, os.path.join(ROOT, "tools"))
 
 from bunnys_engine.separator import Separator  # noqa: E402
-from export_onnx import load_model  # noqa: E402
+from export_onnx import load_htdemucs  # noqa: E402
 
 
 def main():
@@ -30,7 +30,7 @@ def main():
 
     with open(os.path.join(args.models_dir, "models.json")) as f:
         info = json.load(f)["models"]["htdemucs_6s"]
-    model = load_model("htdemucs_6s", args.random_weights)
+    model = load_htdemucs(args.random_weights)
     sr = info["samplerate"]
     n = int(args.seconds * sr)
     t = np.arange(n) / sr
@@ -40,7 +40,8 @@ def main():
         0.3 * np.sin(2 * np.pi * 165 * t) + 0.05 * rng.standard_normal(n),
     ]).astype(np.float32)
 
-    sep = Separator(os.path.join(args.models_dir, "htdemucs_6s.onnx"), info, device="cpu")
+    path = os.path.join(args.models_dir, "htdemucs_6s.onnx")
+    sep = Separator(info, lambda variant: path, device="cpu")
     ours = sep.separate(wav, "balanced")
 
     from demucs.apply import apply_model

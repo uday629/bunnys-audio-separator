@@ -70,3 +70,38 @@ def write_wav(path, audio, samplerate=44100, bits=24):
             b = ints.reshape(-1, 1).view(np.uint8)[:, :3]
             w.writeframes(np.ascontiguousarray(b).tobytes())
     os.replace(tmp, path)
+
+
+def varispeed(audio, samplerate, speed, target_len=None, reverse=False):
+    """Play [C, N] audio at `speed` x (pitch follows speed, like Premiere's
+    default speed change without "Maintain Audio Pitch").
+
+    Implemented as a high-quality resample (libswresample): the samples are
+    reinterpreted at samplerate*speed and converted back to samplerate.
+    """
+    import av
+
+    if reverse:
+        audio = audio[:, ::-1]
+    if abs(speed - 1.0) > 1e-4:
+        in_rate = max(1000, int(round(samplerate * speed)))
+        layout = "stereo" if audio.shape[0] == 2 else "mono"
+        res = av.AudioResampler(format="fltp", layout=layout, rate=samplerate)
+        chunks = []
+        block = 1 << 16
+        for s in range(0, audio.shape[1], block):
+            frame = av.AudioFrame.from_ndarray(
+                np.ascontiguousarray(audio[:, s:s + block], dtype=np.float32),
+                format="fltp", layout=layout)
+            frame.sample_rate = in_rate
+            for out in res.resample(frame):
+                chunks.append(out.to_ndarray())
+        for out in res.resample(None):
+            chunks.append(out.to_ndarray())
+        audio = np.concatenate(chunks, axis=-1)
+    if target_len is not None:
+        if audio.shape[1] >= target_len:
+            audio = audio[:, :target_len]
+        else:
+            audio = np.pad(audio, ((0, 0), (0, target_len - audio.shape[1])))
+    return np.ascontiguousarray(audio, dtype=np.float32)

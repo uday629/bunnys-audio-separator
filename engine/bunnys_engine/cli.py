@@ -48,21 +48,25 @@ def cmd_info(args):
 
 
 def cmd_separate(args):
-    from .audio_io import load_audio, write_wav
-    from .models import ensure_model
+    from .audio_io import load_audio, write_wav, varispeed
+    from .models import ensure_model, model_info
     from .separator import Separator, build_stems, MODES
 
     t_start = time.time()
+    model_name, table = MODES[args.mode]
     wanted = [s.strip().lower() for s in args.stems.split(",") if s.strip()]
-    if not wanted:
-        wanted = list(MODES[args.mode].keys())
+    wanted = [w for w in dict.fromkeys(wanted)] or list(table.keys())[:3]
 
     log("Preparing AI model...")
-    model_path, info = ensure_model("htdemucs_6s", "fp32", args.models_dir,
-                                    progress=lambda f: progress("download", f), log=log)
-    progress("download", 1)
+    info = model_info(model_name, args.models_dir)
 
-    sep = Separator(model_path, info, device=args.device, log=log)
+    def resolve(variant):
+        path = ensure_model(model_name, variant, args.models_dir,
+                            progress=lambda f: progress("download", f), log=log)
+        progress("download", 1)
+        return path
+
+    sep = Separator(info, resolve, device=args.device, log=log)
     emit("device", label=sep.device_label, provider=sep.active_provider)
     log(f"Running on {sep.device_label}")
 
@@ -77,16 +81,23 @@ def cmd_separate(args):
     os.makedirs(args.out_dir, exist_ok=True)
     base = safe_name(args.name or os.path.splitext(os.path.basename(args.input))[0])
     stems = build_stems(sources, args.mode, wanted)
+    target = None
+    if args.timeline_duration:
+        target = int(round(args.timeline_duration * sep.samplerate))
+    out_seconds = duration
     files = []
     for i, (key, label, audio) in enumerate(stems):
+        if args.speed != 1.0 or args.reverse or target is not None:
+            audio = varispeed(audio, sep.samplerate, args.speed, target, args.reverse)
+            out_seconds = audio.shape[-1] / sep.samplerate
         path = os.path.join(args.out_dir, f"{base} - {label}.wav")
         write_wav(path, audio, sep.samplerate, bits=args.bits)
         files.append({"stem": key, "label": label, "path": path})
         progress("write", (i + 1) / len(stems))
 
     elapsed = time.time() - t_start
-    emit("done", files=files, seconds=round(elapsed, 2), audio_seconds=round(duration, 2),
-         device=sep.device_label)
+    emit("done", files=files, seconds=round(elapsed, 2), audio_seconds=round(out_seconds, 4),
+         source_seconds=round(duration, 4), device=sep.device_label)
 
 
 def main(argv=None):
@@ -106,6 +117,11 @@ def main(argv=None):
     sp.add_argument("--device", choices=["auto", "gpu", "cpu"], default="auto")
     sp.add_argument("--quality", choices=["fast", "balanced", "best"], default="balanced")
     sp.add_argument("--bits", type=int, choices=[16, 24], default=24)
+    sp.add_argument("--speed", type=float, default=1.0,
+                    help="clip speed on the timeline (2.0 = 200%%); stems are re-timed to match")
+    sp.add_argument("--reverse", action="store_true", help="clip plays reversed on the timeline")
+    sp.add_argument("--timeline-duration", type=float,
+                    help="exact duration of the clip on the timeline, in seconds")
     sp.add_argument("--models-dir")
     args = ap.parse_args(argv)
     try:

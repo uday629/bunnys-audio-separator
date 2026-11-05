@@ -50,14 +50,20 @@
 
     <section class="card hidden" id="stems-cinematic" data-stems="cinematic">
       <div class="card-head">
-        <h2>Choose stems <span class="badge">Beta</span></h2>
+        <h2>Choose stems</h2>
+        <div class="presets">
+          <button class="chip-btn" data-preset-cinematic="dialogue,sfx,music">All 3</button>
+          <button class="chip-btn" data-preset-cinematic="background">Remove voice</button>
+          <button class="chip-btn" data-preset-cinematic="">Clear</button>
+        </div>
       </div>
       <div class="stems">
         <label class="stem"><input type="checkbox" value="dialogue" checked><span>Vocal / Dialogue</span></label>
         <label class="stem"><input type="checkbox" value="sfx" checked><span>SFX</span></label>
         <label class="stem"><input type="checkbox" value="music" checked><span>Music</span></label>
+        <label class="stem"><input type="checkbox" value="background"><span>Background</span></label>
       </div>
-      <p class="hint">Beta: SFX/music split works best on clearly separated sounds.</p>
+      <p class="hint">Dedicated dialogue &middot; effects &middot; music AI. Background = music + SFX without the voice. Runs best on a GPU.</p>
     </section>
 
     <section class="card">

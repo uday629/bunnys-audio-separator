@@ -60,8 +60,14 @@ BAS.getSelection = function () {
         }
         var clip = audio || any;
         if (!clip) return BAS._err('Select an audio (or video with audio) clip in the timeline first.');
-        var media = clip.projectItem.getMediaPath();
-        if (!media) return BAS._err('This clip has no media file (nested sequences are not supported yet).');
+        var item = clip.projectItem;
+        var isSeq = false;
+        try { isSeq = !!(item.isSequence && item.isSequence()); } catch (e0) {}
+        var media = '';
+        try { media = item.getMediaPath() || ''; } catch (e1) {}
+        if (!media && !isSeq) {
+            return BAS._err('This clip has no media file (graphics, titles and synthetic clips cannot be separated).');
+        }
 
         var trackIndex = -1;
         if (clip.mediaType === 'Audio') {
@@ -74,16 +80,23 @@ BAS.getSelection = function () {
         }
         // speed = source duration / timeline duration (robust across versions)
         var tlDur = clip.end.seconds - clip.start.seconds;
-        var speed = tlDur > 0 ? (clip.outPoint.seconds - clip.inPoint.seconds) / tlDur : 1;
+        var srcDur = Math.abs(clip.outPoint.seconds - clip.inPoint.seconds);
+        var speed = tlDur > 0 ? srcDur / tlDur : 1;
+        var reversed = false;
+        try { reversed = !!(clip.isSpeedReversed && clip.isSpeedReversed()); } catch (e2) {}
 
         return BAS._ok({
             mediaPath: media,
+            isSequence: isSeq,
+            itemNodeId: item.nodeId || '',
             name: clip.name,
-            inPoint: clip.inPoint.seconds,
-            outPoint: clip.outPoint.seconds,
+            inPoint: Math.min(clip.inPoint.seconds, clip.outPoint.seconds),
+            outPoint: Math.max(clip.inPoint.seconds, clip.outPoint.seconds),
             start: clip.start.seconds,
             end: clip.end.seconds,
             speed: speed,
+            reversed: reversed,
+            appPath: String(app.path || ''),
             trackIndex: trackIndex,
             nodeId: clip.nodeId || '',
             projectPath: app.project.path || '',
@@ -98,9 +111,32 @@ BAS.getSelection = function () {
 BAS._sameClip = function (a, id, start, media) {
     if (id) return a.nodeId === id;
     try {
-        return Math.abs(a.start.seconds - start) < 0.0005 &&
-            BAS._norm(a.projectItem.getMediaPath()) === BAS._norm(media);
+        if (Math.abs(a.start.seconds - start) >= 0.0005) return false;
+        var m = '';
+        try { m = a.projectItem.getMediaPath() || ''; } catch (e1) {}
+        return BAS._norm(m) === BAS._norm(media || '');
     } catch (e) { return false; }
+};
+
+/** Render a nested sequence's mixed audio to a WAV file (whole sequence). */
+BAS.renderNested = function (argJson) {
+    var a;
+    try { a = BAS._parse(argJson); } catch (e0) { return BAS._err('Bad arguments'); }
+    try {
+        var target = null;
+        for (var i = 0; i < app.project.sequences.numSequences; i++) {
+            var s = app.project.sequences[i];
+            if (s.projectItem && s.projectItem.nodeId === a.itemNodeId) { target = s; break; }
+        }
+        if (!target) return BAS._err('Could not find the nested sequence in the project.');
+        var encodeEntire = (app.encoder && app.encoder.ENCODE_ENTIRE !== undefined) ? app.encoder.ENCODE_ENTIRE : 0;
+        target.exportAsMediaDirect(a.outPath, a.presetPath, encodeEntire);
+        var f = new File(a.outPath);
+        if (!f.exists) return BAS._err('Premiere could not render the nested sequence audio.');
+        return BAS._ok({ path: a.outPath });
+    } catch (e) {
+        return BAS._err('Rendering the nested sequence failed: ' + e.toString());
+    }
 };
 
 BAS._findBin = function (name) {

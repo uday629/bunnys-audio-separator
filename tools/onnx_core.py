@@ -19,9 +19,10 @@ from einops import rearrange
 
 
 class HTDemucsCore(nn.Module):
-    def __init__(self, model):
+    def __init__(self, model, half=False):
         super().__init__()
         self.m = model
+        self.half_precision = half
         assert model.cac, "only complex-as-channels HTDemucs is supported"
 
     def forward(self, mix, mag):
@@ -37,6 +38,11 @@ class HTDemucsCore(nn.Module):
         meant = xt.mean(dim=(1, 2), keepdim=True)
         stdt = xt.std(dim=(1, 2), keepdim=True)
         xt = (xt - meant) / (1e-5 + stdt)
+
+        if self.half_precision:
+            # statistics above stay fp32; the network itself runs in fp16
+            x = x.half()
+            xt = xt.half()
 
         saved, saved_t, lengths, lengths_t = [], [], [], []
         for idx, encode in enumerate(m.encoder):
@@ -85,6 +91,10 @@ class HTDemucsCore(nn.Module):
                     skip = saved_t.pop(-1)
                     xt, _ = tdec(xt, skip, length_t)
 
+        if self.half_precision:
+            x = x.float()
+            xt = xt.float()
+
         S = len(m.sources)
         L = mix.shape[-1]
         x = x.view(B, S, -1, Fq, T)
@@ -92,3 +102,23 @@ class HTDemucsCore(nn.Module):
         xt = xt.view(B, S, -1, L)
         xt = xt * stdt[:, None] + meant[:, None]
         return x, xt
+
+
+class half_positional_embeddings:
+    """Context manager: make demucs' sinusoidal embeddings follow fp16 weights.
+
+    demucs.transformer builds its position embeddings in fp32, which silently
+    promotes the whole cross-transformer back to fp32 when the model is .half().
+    """
+
+    def __enter__(self):
+        import demucs.transformer as T
+        self.T = T
+        self.saved = (T.create_sin_embedding, T.create_2d_sin_embedding)
+        a, b = self.saved
+        T.create_sin_embedding = lambda *x, **k: a(*x, **k).half()
+        T.create_2d_sin_embedding = lambda *x, **k: b(*x, **k).half()
+        return self
+
+    def __exit__(self, *exc):
+        self.T.create_sin_embedding, self.T.create_2d_sin_embedding = self.saved

@@ -85,6 +85,13 @@
         applySeg(); saveSettings();
       });
     });
+    $$("[data-preset-cinematic]").forEach(function (b) {
+      b.addEventListener("click", function () {
+        var want = b.getAttribute("data-preset-cinematic").split(",");
+        $$('[data-stems="cinematic"] input').forEach(function (cb) { cb.checked = want.indexOf(cb.value) >= 0; });
+        saveSettings();
+      });
+    });
     $$("[data-preset]").forEach(function (b) {
       b.addEventListener("click", function () {
         var want = b.getAttribute("data-preset").split(",");
@@ -191,6 +198,43 @@
     return d.getFullYear() + p(d.getMonth() + 1) + p(d.getDate()) + "-" + p(d.getHours()) + p(d.getMinutes()) + p(d.getSeconds());
   }
 
+  function mkdirp(dir) {
+    if (fs.existsSync(dir)) return;
+    mkdirp(path.dirname(dir));
+    fs.mkdirSync(dir);
+  }
+
+  /** Find a WAV (audio-only) export preset shipped with Premiere Pro. */
+  function findWavPreset(appPath) {
+    if (!appPath) return null;
+    var roots = [appPath, path.join(appPath, "Contents"), path.dirname(appPath)];
+    var budget = 30000;
+    var found = [];
+    function walk(dir, depth) {
+      if (depth > 8 || budget <= 0) return;
+      var entries;
+      try { entries = fs.readdirSync(dir); } catch (e) { return; }
+      for (var i = 0; i < entries.length && budget > 0; i++) {
+        budget--;
+        var full = path.join(dir, entries[i]);
+        var st;
+        try { st = fs.statSync(full); } catch (e2) { continue; }
+        if (st.isDirectory()) walk(full, depth + 1);
+        else if (/\.epr$/i.test(entries[i]) && /(wav|waveform)/i.test(entries[i])) found.push(full);
+      }
+    }
+    for (var r = 0; r < roots.length && !found.length; r++) {
+      var mediaIO = path.join(roots[r], "MediaIO", "systempresets");
+      if (fs.existsSync(mediaIO)) walk(mediaIO, 0);
+    }
+    for (r = 0; r < roots.length && !found.length; r++) walk(roots[r], 0);
+    found.sort(function (a, b) {
+      var score = function (p) { return (/48/.test(p) ? 0 : 1) + (/16/.test(p) ? 0 : 1); };
+      return score(a) - score(b);
+    });
+    return found[0] || null;
+  }
+
   function outputDir(sel) {
     var base;
     if (sel.projectPath) base = path.join(path.dirname(sel.projectPath), "Bunnys Stems");
@@ -215,22 +259,39 @@
     Host.call("getSelection").then(function (res) {
       if (!res.ok) throw new Error(res.error);
       sel = res;
-      if (sel.speed && Math.abs(sel.speed - 1) > 0.001) {
-        throw new Error("This clip has a speed change (" + Math.round(sel.speed * 100) + "%). " +
-          "Set the clip speed to 100% before separating — speed-changed clips are not supported yet.");
+      sel.outDir = outputDir(sel);
+      if (!sel.isSequence) return sel.mediaPath;
+      // nested sequence: let Premiere render its mixed audio first
+      setProgress(0.02, "Rendering nested sequence audio…");
+      var preset = findWavPreset(sel.appPath);
+      if (!preset) {
+        throw new Error("Could not find Premiere's WAV export preset needed for nested sequences. " +
+          "Use Render and Replace on the nested clip, then try again.");
       }
+      mkdirp(sel.outDir);
+      var outPath = path.join(sel.outDir, "nested-sequence-audio.wav");
+      return Host.call("renderNested", { itemNodeId: sel.itemNodeId, outPath: outPath, presetPath: preset })
+        .then(function (r) {
+          if (!r.ok) throw new Error(r.error);
+          return r.path;
+        });
+    }).then(function (inputPath) {
+      var timelineDur = Math.max(0.001, sel.end - sel.start);
       var args = [
         "separate",
-        "--input", sel.mediaPath,
+        "--input", inputPath,
         "--start", String(sel.inPoint),
         "--end", String(sel.outPoint),
         "--mode", state.mode,
         "--stems", stems.join(","),
         "--device", state.device,
         "--quality", state.quality,
-        "--out-dir", outputDir(sel),
-        "--name", sel.name || "clip"
+        "--out-dir", sel.outDir,
+        "--name", sel.name || "clip",
+        "--speed", String(sel.speed > 0 ? sel.speed : 1),
+        "--timeline-duration", String(timelineDur)
       ];
+      if (sel.reversed) args.push("--reverse");
       return runEngine(args, function (ev) {
         if (ev.type === "progress") {
           var label = STAGE_TEXT[ev.stage] || "Working…";

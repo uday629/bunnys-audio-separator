@@ -1,24 +1,30 @@
 name: Build AI models
 
-# Exports the pretrained Demucs 6-stem model to ONNX, verifies it against the
-# PyTorch reference and publishes it as assets of the `models-v1` release.
+# Exports both separation models to ONNX (fp32 + fp16), verifies them against
+# the original PyTorch implementations and publishes them as assets of the
+# `models-v2` release (downloaded by the plugin on first use).
 on:
   push:
     branches: [main]
     paths:
       - "tools/export_onnx.py"
       - "tools/onnx_core.py"
+      - "tools/bandit_model.py"
       - "engine/bunnys_engine/dsp.py"
+      - "tests/verify_bandit_reference.py"
       - ".github/workflows/models.yml"
   workflow_dispatch:
 
 permissions:
   contents: write
 
+env:
+  MSST_RELEASE: https://github.com/ZFTurbo/Music-Source-Separation-Training/releases/download/v.1.0.3
+
 jobs:
   export:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
 
@@ -29,22 +35,40 @@ jobs:
       - name: Install export tooling
         run: |
           pip install torch==2.4.1 torchaudio==2.4.1 --index-url https://download.pytorch.org/whl/cpu
-          pip install demucs==4.0.1 onnx onnxruntime einops numpy
+          pip install demucs==4.0.1 onnx onnxruntime einops numpy pyyaml
+          # only needed to import the original BandIt code for the reference check
+          pip install pytorch_lightning torchmetrics librosa spafe ml_collections
+
+      - name: Fetch BandIt Plus (DnR) weights and original code
+        run: |
+          mkdir -p ext
+          curl -sSfL -o ext/bandit.yaml "$MSST_RELEASE/config_dnr_bandit_bsrnn_multi_mus64.yaml"
+          curl -sSfL -o ext/bandit.chpt "$MSST_RELEASE/model_bandit_plus_dnr_sdr_11.47.chpt"
+          git clone --depth 1 https://github.com/ZFTurbo/Music-Source-Separation-Training ext/mss
 
       - name: Export to ONNX (with built-in verification)
-        run: python tools/export_onnx.py --out dist/models
+        run: |
+          python tools/export_onnx.py --out dist/models \
+            --bandit-config ext/bandit.yaml --bandit-ckpt ext/bandit.chpt
 
-      - name: Verify full engine against PyTorch demucs
+      - name: Verify Demucs engine against PyTorch demucs
         run: python tests/test_equivalence.py dist/models --seconds 25
 
-      - name: Publish to models-v1 release
+      - name: Verify BandIt against the original implementation
+        run: python tests/verify_bandit_reference.py ext/mss ext/bandit.yaml ext/bandit.chpt dist/models
+
+      - name: Publish to models-v2 release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: models-v1
-          name: AI models v1
+          tag_name: models-v2
+          name: AI models v2
           body: |
             AI model files for Bunnys Audio Separator (downloaded automatically by the plugin on first use).
-            Demucs htdemucs_6s by Meta AI Research (MIT license), converted to ONNX.
+            - htdemucs_6s: Demucs v4 6-stem music model by Meta AI Research (MIT), ONNX fp32 + fp16
+            - bandit_dnr: BandIt Plus dialogue/music/effects model, via ZFTurbo/Music-Source-Separation-Training (MIT), ONNX fp32 + fp16
           files: |
             dist/models/htdemucs_6s.onnx
+            dist/models/htdemucs_6s.fp16.onnx
+            dist/models/bandit_dnr.onnx
+            dist/models/bandit_dnr.fp16.onnx
             dist/models/models.json

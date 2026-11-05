@@ -1,9 +1,11 @@
 """Source separation with ONNX Runtime.
 
-* Picks the best execution provider for the machine (CUDA / DirectML / CoreML / CPU).
+* Picks the best execution provider for the machine (CUDA / DirectML / CoreML / CPU)
+  and the matching model precision (fp16 on CUDA/DirectML, fp32 elsewhere).
 * Splits long audio into model-sized segments with overlap + triangular
   cross-fade (same scheme as demucs.apply.apply_model), batching segments on GPU.
-* Falls back automatically: smaller GPU batch on out-of-memory, then CPU.
+* Never gives up silently: low GPU memory -> smaller batches; numerical trouble
+  in fp16 -> fp32; GPU failure -> CPU.
 """
 import os
 
@@ -12,6 +14,7 @@ import numpy as np
 from . import dsp
 
 GPU_PROVIDERS = ["CUDAExecutionProvider", "DmlExecutionProvider", "CoreMLExecutionProvider"]
+FP16_PROVIDERS = ("CUDAExecutionProvider", "DmlExecutionProvider")
 
 PROVIDER_LABELS = {
     "CUDAExecutionProvider": "NVIDIA CUDA",
@@ -20,12 +23,23 @@ PROVIDER_LABELS = {
     "CPUExecutionProvider": "CPU",
 }
 
+# overlap between segments, number of random time shifts averaged
 QUALITY = {
-    # overlap between segments, number of random time shifts averaged
-    "fast": {"overlap": 0.1, "shifts": 0},
-    "balanced": {"overlap": 0.25, "shifts": 0},
-    "best": {"overlap": 0.25, "shifts": 2},
+    "htdemucs": {
+        "fast": {"overlap": 0.1, "shifts": 0},
+        "balanced": {"overlap": 0.25, "shifts": 0},
+        "best": {"overlap": 0.25, "shifts": 2},
+    },
+    "bandit": {
+        "fast": {"overlap": 0.1, "shifts": 0},
+        "balanced": {"overlap": 0.25, "shifts": 0},
+        "best": {"overlap": 0.5, "shifts": 0},
+    },
 }
+
+
+class NonFiniteOutput(RuntimeError):
+    pass
 
 
 def available_providers():
@@ -59,23 +73,31 @@ def _center_trim(x, length):
 
 
 class Separator:
-    def __init__(self, model_path, info, device="auto", log=None, batch_size=None):
-        self.model_path = model_path
+    """resolve_model(variant) must return a local path for "fp32"/"fp16"."""
+
+    def __init__(self, info, resolve_model, device="auto", log=None, batch_size=None):
+        self.kind = info.get("kind", "htdemucs")
         self.sources = list(info["sources"])
         self.samplerate = int(info["samplerate"])
         self.segment = int(info["segment_samples"])
+        self.normalize = bool(info.get("normalize", self.kind == "htdemucs"))
+        self.variants = set(info["variants"])
+        self._resolve = resolve_model
         self.log = log or (lambda m: None)
-        self.device = device
-        self.providers = choose_providers(device)
-        if device == "gpu" and self.providers[0] == "CPUExecutionProvider":
+        providers = choose_providers(device)
+        if device == "gpu" and providers[0] == "CPUExecutionProvider":
             self.log("No supported GPU found, using CPU instead")
-        self._open(self.providers)
-        on_gpu = self.providers[0] != "CPUExecutionProvider"
+        self._open(providers)
+        on_gpu = self.active_provider != "CPUExecutionProvider"
         self.batch_size = batch_size or (2 if on_gpu else 1)
 
     # -- session management -------------------------------------------------
-    def _open(self, providers):
+    def _pick_variant(self, provider):
+        return "fp16" if provider in FP16_PROVIDERS and "fp16" in self.variants else "fp32"
+
+    def _open(self, providers, variant=None):
         import onnxruntime as ort
+        variant = variant or self._pick_variant(providers[0])
         so = ort.SessionOptions()
         so.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
         so.log_severity_level = 3
@@ -93,42 +115,70 @@ class Separator:
             else:
                 opts.append({})
         try:
-            self.session = ort.InferenceSession(self.model_path, so, providers=providers,
-                                                provider_options=opts)
+            path = self._resolve(variant)
+            self.session = ort.InferenceSession(path, so, providers=providers, provider_options=opts)
         except Exception as e:  # noqa: BLE001
-            if providers[0] == "CPUExecutionProvider":
+            if providers[0] == "CPUExecutionProvider" and variant == "fp32":
                 raise
-            self.log(f"{PROVIDER_LABELS.get(providers[0], providers[0])} could not start ({e}); using CPU")
-            return self._open(["CPUExecutionProvider"])
-        self.active_provider = self.session.get_providers()[0]
+            if variant == "fp16":
+                self.log(f"Fast fp16 model unavailable ({str(e)[:100]}); using fp32")
+                return self._open(providers, "fp32")
+            self.log(f"{PROVIDER_LABELS.get(providers[0], providers[0])} could not start "
+                     f"({str(e)[:120]}); using CPU")
+            return self._open(["CPUExecutionProvider"], "fp32")
         self.providers = providers
+        self.variant = variant
+        self.active_provider = self.session.get_providers()[0]
 
     @property
     def device_label(self):
-        return PROVIDER_LABELS.get(self.active_provider, self.active_provider)
+        label = PROVIDER_LABELS.get(self.active_provider, self.active_provider)
+        return label + (" · fp16" if self.variant == "fp16" else "")
+
+    def _run(self, batch):
+        """batch: [B, 2, segment] -> [B, S, 2, segment]"""
+        if self.kind == "bandit":
+            B, C, L = batch.shape
+            out = self.session.run(None, {"spec": dsp.bandit_spec(batch)})[0]
+            res = dsp.bandit_ispec(out, B, C, L)
+        else:
+            mag = dsp.model_spec(batch)
+            spec_out, time_out = self.session.run(None, {"mix": batch, "mag": mag})
+            res = dsp.model_ispec(spec_out, batch.shape[-1]) + time_out
+        return res
 
     def _infer(self, batch):
-        """batch: [B, 2, segment] -> [B, S, 2, segment]"""
-        mag = dsp.model_spec(batch)
-        spec_out, time_out = self.session.run(None, {"mix": batch, "mag": mag})
-        return dsp.model_ispec(spec_out, batch.shape[-1]) + time_out
+        res = self._run(batch)
+        if not np.isfinite(res).all():
+            raise NonFiniteOutput("model produced invalid numbers")
+        return res
 
     def _infer_safe(self, batch):
         while True:
             try:
                 return self._infer(batch)
+            except NonFiniteOutput:
+                if self.variant == "fp16":
+                    self.log("fp16 precision issue on this GPU; switching to fp32")
+                    self._open(self.providers, "fp32")
+                    continue
+                if self.active_provider != "CPUExecutionProvider":
+                    self.log("GPU returned invalid output; continuing on CPU")
+                    self._open(["CPUExecutionProvider"], "fp32")
+                    continue
+                return np.nan_to_num(self._run(batch))
             except Exception as e:  # noqa: BLE001
                 if self.active_provider == "CPUExecutionProvider":
                     raise
                 if len(batch) > 1:
-                    # most likely out of GPU memory: process half at a time
+                    # most likely out of GPU memory: process half at a time from now on
                     self.batch_size = max(1, len(batch) // 2)
-                    self.log(f"GPU busy/low memory, reducing batch to {self.batch_size}")
+                    self.log(f"GPU memory is tight, reducing batch to {self.batch_size}")
                     half = len(batch) // 2
                     return np.concatenate([self._infer_safe(batch[:half]),
                                            self._infer_safe(batch[half:])])
                 self.log(f"GPU failed ({str(e)[:120]}); continuing on CPU")
-                self._open(["CPUExecutionProvider"])
+                self._open(["CPUExecutionProvider"], "fp32")
 
     # -- separation -------------------------------------------------------------
     def _split_apply(self, mix, overlap, progress):
@@ -155,18 +205,22 @@ class Separator:
             i += len(group)
             done += len(group)
             progress(done / len(offsets))
-        out /= sum_w
+        out /= np.maximum(sum_w, 1e-8)
         return out
 
     def separate(self, wav, quality="balanced", progress=None):
         """wav: [2, N] float32 at self.samplerate -> dict source -> [2, N]"""
         progress = progress or (lambda f: None)
-        q = QUALITY.get(quality, QUALITY["balanced"])
+        q = QUALITY[self.kind].get(quality, QUALITY[self.kind]["balanced"])
         ref = wav.mean(0)
         mean, std = float(ref.mean()), float(ref.std())
         if std < 1e-8:
+            progress(1.0)
             return {s: np.zeros_like(wav) for s in self.sources}
-        mix = (wav - mean) / std
+        if self.normalize:
+            mix = (wav - mean) / std
+        else:
+            mix = wav
         shifts = q["shifts"]
         if not shifts:
             est = self._split_apply(mix, q["overlap"], progress)
@@ -183,12 +237,13 @@ class Separator:
                     chunk, q["overlap"], lambda f, k=k: progress((k + f) / shifts))
                 est = est + res[..., max_shift - off:max_shift - off + length]
             est = est / shifts
-        est = est * std + mean
+        if self.normalize:
+            est = est * std + mean
         return {s: est[i] for i, s in enumerate(self.sources)}
 
 
 # ----------------------------------------------------------------------------
-# Output stems per mode
+# Output stems per mode:  key -> (label, model, [model sources summed])
 # ----------------------------------------------------------------------------
 MUSIC_STEMS = {
     "vocals": ("Vocals", ["vocals"]),
@@ -200,19 +255,21 @@ MUSIC_STEMS = {
     "other": ("Other", ["other"]),
 }
 
-# Experimental: derived from the 6-stem music model until a dedicated
-# dialogue/effects/music model is integrated.
 CINEMATIC_STEMS = {
-    "dialogue": ("Vocal-Dialogue", ["vocals"]),
-    "sfx": ("SFX", ["other"]),
-    "music": ("Music", ["drums", "bass", "guitar", "piano"]),
+    "dialogue": ("Vocal-Dialogue", ["speech"]),
+    "sfx": ("SFX", ["effects"]),
+    "music": ("Music", ["music"]),
+    "background": ("Background (Music+SFX)", ["music", "effects"]),
 }
 
-MODES = {"music": MUSIC_STEMS, "cinematic": CINEMATIC_STEMS}
+MODES = {
+    "music": ("htdemucs_6s", MUSIC_STEMS),
+    "cinematic": ("bandit_dnr", CINEMATIC_STEMS),
+}
 
 
 def build_stems(sources, mode, wanted):
-    table = MODES[mode]
+    table = MODES[mode][1]
     result = []
     for key in wanted:
         if key not in table:
@@ -220,4 +277,3 @@ def build_stems(sources, mode, wanted):
         label, parts = table[key]
         result.append((key, label, sum(sources[p] for p in parts)))
     return result
-

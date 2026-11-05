@@ -3,6 +3,7 @@ name: Build AI models
 # Exports both separation models to ONNX (fp32 + fp16), verifies them against
 # the original PyTorch implementations and publishes them as assets of the
 # `models-v2` release (downloaded by the plugin on first use).
+# Reference checks: Demucs vs PyTorch demucs, BandIt vs the original MSST code.
 on:
   push:
     branches: [main]

@@ -6,6 +6,8 @@
 
 <p align="center"><a href="../../releases/latest"><b>⬇ Download the latest version</b></a></p>
 
+<p align="center"><img src="docs/Bunnys-Audio-Separator-UI.png" width="640" alt="Bunnys Audio Separator panel: Music Stems mode and Vocal · SFX · Music mode"></p>
+
 ---
 
 ## বাংলা

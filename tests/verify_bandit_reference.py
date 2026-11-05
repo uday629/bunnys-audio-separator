@@ -20,12 +20,15 @@ def main():
     repo, cfg_path, ckpt, models_dir = sys.argv[1:5]
     sys.path.insert(0, repo)
     sys.path.insert(0, os.path.join(repo, "models", "bandit"))
-    # `asteroid` is only used for training losses; stub it so we don't pull it in.
+    # Import only the network code: register the parent packages as empty
+    # namespaces so their __init__ files (training data/augmentation/loss
+    # imports) are not executed.
     import types
-    stub = types.ModuleType("asteroid")
-    stub.losses = types.ModuleType("asteroid.losses")
-    sys.modules.setdefault("asteroid", stub)
-    sys.modules.setdefault("asteroid.losses", stub.losses)
+    for name, sub in (("models", "models"), ("models.bandit", "models/bandit"),
+                      ("models.bandit.core", "models/bandit/core")):
+        mod = types.ModuleType(name)
+        mod.__path__ = [os.path.join(repo, sub)]
+        sys.modules[name] = mod
     from models.bandit.core.model import MultiMaskMultiSourceBandSplitRNNSimple
     from bunnys_engine import dsp
     import onnxruntime as ort

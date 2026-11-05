@@ -1,0 +1,205 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bunnys Audio Separator — Read Me</title>
+<style>
+  :root {
+    --blue: #1F6BFF; --orange: #FF8A00; --black: #08080A; --violet: #6A2BFF; --red: #FF1F56;
+    --grad: linear-gradient(90deg, var(--blue), var(--violet) 33%, var(--red) 66%, var(--orange));
+    --surface: #121216; --line: #26262E; --text: #F2F2F5; --muted: #A0A0AE;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--black); color: var(--text);
+    font: 15px/1.65 "Segoe UI", -apple-system, BlinkMacSystemFont, "Noto Sans Bengali", "Helvetica Neue", Arial, sans-serif; }
+  .wrap { max-width: 860px; margin: 0 auto; padding: 32px 18px 60px; }
+  header { display: flex; gap: 16px; align-items: center; padding-bottom: 20px; border-bottom: 1px solid var(--line); }
+  header img { width: 72px; height: 72px; border-radius: 50%; box-shadow: 0 0 28px rgba(106,43,255,.4); }
+  h1 { margin: 0; font-size: 28px; background: var(--grad); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  header p { margin: 2px 0 0; color: var(--muted); }
+  nav { display: flex; gap: 8px; flex-wrap: wrap; margin: 20px 0; }
+  nav a { padding: 6px 14px; border: 1px solid var(--line); border-radius: 20px; color: var(--text); text-decoration: none; font-size: 14px; }
+  nav a:hover { border-color: var(--blue); }
+  h2 { margin: 40px 0 10px; font-size: 22px; padding-bottom: 6px; border-bottom: 2px solid; border-image: var(--grad) 1; }
+  h3 { margin: 26px 0 6px; font-size: 17px; color: #fff; }
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 14px 18px; margin: 12px 0; }
+  .warn { border-color: rgba(255,138,0,.5); }
+  ol, ul { padding-left: 22px; } li { margin: 4px 0; }
+  code, kbd { background: #1d1d24; border: 1px solid var(--line); border-radius: 5px; padding: 1px 6px; font-size: 13px; }
+  table { width: 100%; border-collapse: collapse; margin: 10px 0; font-size: 14px; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; }
+  a { color: var(--blue); } a:hover { color: var(--orange); }
+  footer { margin-top: 50px; padding-top: 16px; border-top: 1px solid var(--line); color: var(--muted); text-align: center; font-size: 13px; }
+  .lang { font-size: 13px; color: var(--orange); letter-spacing: .5px; text-transform: uppercase; margin-top: 46px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <img src="data:image/png;base64,{{LOGO}}" alt="Bunnys Framelab logo">
+  <div>
+    <h1>Bunnys Audio Separator</h1>
+    <p>Version {{VERSION}} · AI stem separation for Adobe Premiere Pro · by Bunnys Framelab</p>
+  </div>
+</header>
+
+<nav>
+  <a href="#bn">বাংলা</a>
+  <a href="#en">English</a>
+  <a href="https://framelabmedia.odoo.com">framelabmedia.odoo.com</a>
+  <a href="https://www.instagram.com/bunnysframelab/">Instagram @bunnysframelab</a>
+</nav>
+
+<!-- ======================================================= বাংলা -->
+<div class="lang" id="bn">বাংলা</div>
+
+<h2>এই ZIP-এ যা আছে</h2>
+<table>
+  <tr><th>File</th><th>কাজ</th></tr>
+  <tr><td><code>BunnysAudioSeparator-Setup-…</code></td><td>Installer — এটা চালিয়ে plugin install করুন</td></tr>
+  <tr><td><code>Uninstall Bunnys Audio Separator</code></td><td>Plugin পুরোপুরি মুছে ফেলার file</td></tr>
+  <tr><td><code>README.html</code></td><td>এই নির্দেশিকা</td></tr>
+  <tr><td><code>THIRD_PARTY_NOTICES.md</code></td><td>ব্যবহৃত open-source অংশের license</td></tr>
+</table>
+
+<h2>Install করার নিয়ম</h2>
+<h3>Windows</h3>
+<ol>
+  <li>Premiere Pro খোলা থাকলে বন্ধ করুন।</li>
+  <li><code>BunnysAudioSeparator-Setup-…exe</code> file-এ double-click করুন।</li>
+  <li>"Windows protected your PC" দেখালে <b>More info</b> চেপে <b>Run anyway</b> চাপুন।</li>
+  <li><b>Install</b> চাপুন, শেষ হলে <b>Finish</b>। Admin password লাগবে না।</li>
+</ol>
+<h3>Mac</h3>
+<ol>
+  <li>Premiere Pro বন্ধ করুন।</li>
+  <li><code>.pkg</code> file-এ double-click করুন।</li>
+  <li>Block দেখালে <b>System Settings → Privacy &amp; Security</b> এ যান, নিচের দিকে <b>Open Anyway</b> চাপুন, তারপর আবার .pkg খুলুন।</li>
+  <li>নির্দেশনা অনুযায়ী <b>Continue → Install</b> চাপুন, Mac-এর password দিন।</li>
+</ol>
+<div class="card warn">Installer এখনো code-sign করা নেই, তাই Windows/Mac প্রথমবার সতর্ক করে। এটা স্বাভাবিক।</div>
+
+<h2>ব্যবহারের নিয়ম</h2>
+<ol>
+  <li>Premiere Pro চালু করে <b>Window → Extensions → Bunnys Audio Separator</b> খুলুন।</li>
+  <li>Timeline-এ একটা clip select করুন (audio, audio-সহ video, অথবা nested sequence)।</li>
+  <li>Mode বাছুন:
+    <ul>
+      <li><b>Music Stems</b> — গান থেকে Vocals, Drums, Bass, Guitar, Piano, Other, Instrumental</li>
+      <li><b>Vocal · SFX · Music</b> — ভিডিও/ফিল্ম থেকে কথা, sound effect, music, অথবা Background (কথা বাদে সব)</li>
+    </ul>
+  </li>
+  <li>যে stem-গুলো লাগবে সেগুলোতে tick দিন।</li>
+  <li><b>Device</b>: Auto (recommended) / GPU / CPU। <b>Quality</b>: Fast / Balanced (recommended) / Best।</li>
+  <li><b>Separate selected clip</b> চাপুন। প্রতিটা stem নতুন audio track-এ মূল clip-এর সাথে sync হয়ে বসবে।</li>
+</ol>
+<ul>
+  <li>প্রথমবার প্রতিটা mode-এর AI model নিজে থেকে একবার download হয় (internet লাগবে)।</li>
+  <li>Stem-গুলো project-এর পাশে <code>Bunnys Stems</code> folder-এ এবং Premiere-এর <b>Bunnys Stems</b> bin-এ থাকে।</li>
+  <li>Speed বদলানো বা reverse করা clip-ও কাজ করে — stem একই speed-এ বসে।</li>
+  <li>“Mute original clip” চালু করলে আলাদা করার পর মূল clip mute হয়ে যায়।</li>
+</ul>
+
+<h2>Uninstall করার নিয়ম</h2>
+<h3>Windows</h3>
+<ol>
+  <li>Premiere Pro বন্ধ করুন।</li>
+  <li><code>Uninstall Bunnys Audio Separator.bat</code> এ double-click করুন, যেকোনো key চাপুন।</li>
+  <li>অথবা: <b>Settings → Apps → Installed apps → Bunnys Audio Separator → Uninstall</b>।</li>
+</ol>
+<h3>Mac</h3>
+<ol>
+  <li>Premiere Pro বন্ধ করুন।</li>
+  <li><code>Uninstall Bunnys Audio Separator.command</code> এ right-click → <b>Open</b> → <b>Open</b>, তারপর Enter আর Mac-এর password দিন।</li>
+</ol>
+
+<h2>সমস্যা হলে</h2>
+<ul>
+  <li><b>Extensions menu-তে নেই:</b> Premiere পুরোপুরি বন্ধ করে আবার খুলুন। তবুও না এলে আবার install করুন।</li>
+  <li><b>“Could not download the AI model”:</b> internet connection দেখে আবার চেষ্টা করুন।</li>
+  <li><b>ধীর চলছে:</b> panel-এ “GPU acceleration ready” লেখা আছে কিনা দেখুন; Quality “Fast” দিন। GPU ছাড়া Vocal·SFX·Music mode বেশ সময় নেয়।</li>
+  <li><b>“Not enough empty audio tracks”:</b> sequence-এ কয়েকটা খালি audio track যোগ করুন।</li>
+</ul>
+
+<!-- ======================================================= English -->
+<div class="lang" id="en">English</div>
+
+<h2>What's in this ZIP</h2>
+<table>
+  <tr><th>File</th><th>Purpose</th></tr>
+  <tr><td><code>BunnysAudioSeparator-Setup-…</code></td><td>The installer — run it to install the plugin</td></tr>
+  <tr><td><code>Uninstall Bunnys Audio Separator</code></td><td>Removes the plugin completely</td></tr>
+  <tr><td><code>README.html</code></td><td>This guide</td></tr>
+  <tr><td><code>THIRD_PARTY_NOTICES.md</code></td><td>Licenses of the open-source parts</td></tr>
+</table>
+
+<h2>Install</h2>
+<h3>Windows</h3>
+<ol>
+  <li>Close Premiere Pro.</li>
+  <li>Double-click <code>BunnysAudioSeparator-Setup-…exe</code>.</li>
+  <li>If “Windows protected your PC” appears, click <b>More info → Run anyway</b>.</li>
+  <li>Click <b>Install</b>, then <b>Finish</b>. No admin rights needed.</li>
+</ol>
+<h3>macOS</h3>
+<ol>
+  <li>Quit Premiere Pro.</li>
+  <li>Double-click the <code>.pkg</code>.</li>
+  <li>If it is blocked, open <b>System Settings → Privacy &amp; Security</b>, click <b>Open Anyway</b>, and open the .pkg again.</li>
+  <li>Click <b>Continue → Install</b> and enter your Mac password.</li>
+</ol>
+<div class="card warn">The installers are not code-signed yet, so Windows/macOS show a warning the first time. That is expected.</div>
+
+<h2>How to use</h2>
+<ol>
+  <li>Start Premiere Pro and open <b>Window → Extensions → Bunnys Audio Separator</b>.</li>
+  <li>Select a clip in the timeline (audio, video with audio, or a nested sequence).</li>
+  <li>Pick a mode:
+    <ul>
+      <li><b>Music Stems</b> — Vocals, Drums, Bass, Guitar, Piano, Other and Instrumental from songs</li>
+      <li><b>Vocal · SFX · Music</b> — dialogue, sound effects, music, or Background (everything except the voice) from video and film audio</li>
+    </ul>
+  </li>
+  <li>Tick the stems you want.</li>
+  <li><b>Device</b>: Auto (recommended) / GPU / CPU. <b>Quality</b>: Fast / Balanced (recommended) / Best.</li>
+  <li>Click <b>Separate selected clip</b>. Each stem lands on a new audio track, in sync with the original clip.</li>
+</ol>
+<ul>
+  <li>Each mode's AI model downloads once, automatically, the first time you use it (internet needed).</li>
+  <li>Stems are saved in a <code>Bunnys Stems</code> folder next to your project and in the <b>Bunnys Stems</b> bin.</li>
+  <li>Speed-changed and reversed clips are supported — stems are placed at the same speed.</li>
+  <li>“Mute original clip” mutes the source clip after separating.</li>
+</ul>
+
+<h2>Uninstall</h2>
+<h3>Windows</h3>
+<ol>
+  <li>Close Premiere Pro.</li>
+  <li>Double-click <code>Uninstall Bunnys Audio Separator.bat</code> and press any key.</li>
+  <li>Or use <b>Settings → Apps → Installed apps → Bunnys Audio Separator → Uninstall</b>.</li>
+</ol>
+<h3>macOS</h3>
+<ol>
+  <li>Quit Premiere Pro.</li>
+  <li>Right-click <code>Uninstall Bunnys Audio Separator.command</code> → <b>Open</b> → <b>Open</b>, press Enter and type your Mac password.</li>
+</ol>
+
+<h2>Troubleshooting</h2>
+<ul>
+  <li><b>Not in the Extensions menu:</b> fully quit and reopen Premiere Pro; reinstall if needed.</li>
+  <li><b>“Could not download the AI model”:</b> check your internet connection and try again.</li>
+  <li><b>Slow:</b> check that the panel says “GPU acceleration ready”, or choose Quality “Fast”. Without a GPU, Vocal · SFX · Music takes a while.</li>
+  <li><b>“Not enough empty audio tracks”:</b> add a few empty audio tracks to the sequence.</li>
+</ul>
+
+<footer>
+  Created by <b>Bunnys Framelab</b> ·
+  <a href="https://framelabmedia.odoo.com">framelabmedia.odoo.com</a> ·
+  <a href="https://www.instagram.com/bunnysframelab/">Instagram @bunnysframelab</a><br>
+  AI models: Demucs v4 (Meta AI Research, MIT) · BandIt Plus (ZFTurbo / Music-Source-Separation-Training, MIT)
+</footer>
+</div>
+</body>
+</html>

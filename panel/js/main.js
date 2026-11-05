@@ -114,7 +114,7 @@
   }
 
   /** Spawn the engine; onEvent gets every JSON line. Resolves with the final event. */
-  function runEngine(args, onEvent) {
+  function runEngine(args, onEvent, background) {
     return new Promise(function (resolve, reject) {
       var exe = enginePath();
       if (!fs.existsSync(exe)) {
@@ -125,7 +125,7 @@
       var buf = "";
       var stderr = "";
       var last = null;
-      state.running = proc;
+      if (!background) state.running = proc;
       proc.stdout.setEncoding("utf8");
       proc.stdout.on("data", function (chunk) {
         buf += chunk;
@@ -143,10 +143,10 @@
       });
       proc.stderr.setEncoding("utf8");
       proc.stderr.on("data", function (d) { stderr = (stderr + d).slice(-4000); });
-      proc.on("error", function (err) { state.running = null; reject(err); });
+      proc.on("error", function (err) { if (!background) state.running = null; reject(err); });
       proc.on("close", function (code) {
         var killed = proc.killedByUser;
-        state.running = null;
+        if (!background) state.running = null;
         if (killed) return reject(new Error("Cancelled"));
         if (last && last.type === "done") return resolve(last);
         if (last && last.type === "info") return resolve(last);
@@ -159,7 +159,8 @@
   function detectDevice() {
     var line = $("#device-line");
     if (!Host.available) { line.textContent = "Open this panel inside Premiere Pro."; return; }
-    runEngine(["info"]).then(function (info) {
+    runEngine(["info"], null, true).then(function (info) {
+      state.gpu = !!info.gpu;
       line.innerHTML = info.gpu
         ? 'Best device: <span class="ok">' + escapeHtml(info.best) + "</span> — GPU acceleration ready"
         : '<span class="warn">No supported GPU found</span> — CPU mode (slower)';
@@ -298,7 +299,9 @@
           if (ev.stage === "separate") label += " " + Math.round(ev.value * 100) + "%";
           setProgress(ev.value, label);
         } else if (ev.type === "device") {
-          $("#progress-text").textContent = "Running on " + ev.label;
+          var note = (state.mode === "cinematic" && ev.provider === "CPUExecutionProvider")
+            ? " — CPU mode, this can take a few minutes" : "";
+          $("#progress-text").textContent = "Running on " + ev.label + note;
         }
       });
     }).then(function (done) {
@@ -322,8 +325,9 @@
         if (r.placed.warning) msg += "<br>" + escapeHtml(r.placed.warning);
         showResult("ok", msg);
       } else {
-        msg += "Stems were imported into the <b>Bunnys Stems</b> bin, but could not be placed automatically: "
-          + escapeHtml(r.placed.error) + "<br>Drag them to the timeline at the clip's start.";
+        msg += "The stems could not be placed on the timeline automatically: " + escapeHtml(r.placed.error)
+          + "<br>They are saved in:<br><code>" + escapeHtml(sel.outDir) + "</code><br>"
+          + "Import them and place them at the clip's start time.";
         showResult("err", msg);
       }
     }).catch(function (err) {

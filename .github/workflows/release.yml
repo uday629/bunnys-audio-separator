@@ -1,8 +1,13 @@
 name: Build installers
 
-# Builds the Windows (.exe) and macOS (.pkg) installers, smoke-tests the engine
-# on each OS, and publishes them as a GitHub release named after the version in
-# engine/bunnys_engine/__init__.py.
+# Builds the Windows and macOS installers, smoke-tests the engine with both AI
+# models on each OS, packs each installer with its uninstaller + README into a
+# ZIP and publishes a GitHub release named after engine/bunnys_engine/__init__.py.
+#
+# Optional code signing (steps are skipped when the secrets are not set):
+#   WINDOWS_PFX_BASE64, WINDOWS_PFX_PASSWORD           -> signtool (Authenticode)
+#   APPLE_INSTALLER_P12_BASE64, APPLE_INSTALLER_P12_PASSWORD, APPLE_INSTALLER_IDENTITY,
+#   APPLE_ID, APPLE_TEAM_ID, APPLE_APP_PASSWORD        -> productsign + notarytool
 on:
   push:
     branches: [main]
@@ -10,7 +15,11 @@ on:
       - "engine/**"
       - "panel/**"
       - "installer/**"
+      - "tools/package_release.py"
       - ".github/workflows/release.yml"
+  workflow_run:
+    workflows: ["Build AI models"]
+    types: [completed]
   workflow_dispatch:
 
 permissions:
@@ -18,8 +27,12 @@ permissions:
 
 jobs:
   windows:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     runs-on: windows-latest
-    timeout-minutes: 60
+    timeout-minutes: 90
+    env:
+      WINDOWS_PFX_BASE64: ${{ secrets.WINDOWS_PFX_BASE64 }}
+      WINDOWS_PFX_PASSWORD: ${{ secrets.WINDOWS_PFX_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -33,26 +46,44 @@ jobs:
         run: pip install -r engine/requirements-windows.txt
       - name: Build engine + extension
         run: python engine/build_engine.py
-      - name: Smoke test engine
+      - name: Smoke test engine (both models)
         shell: bash
         run: |
           ENGINE="dist/extension/com.bunnysframelab.audioseparator/bin/bunnys-engine/bunnys-engine.exe"
           "$ENGINE" info
-          python -c "import numpy as np, wave; sr=44100; t=np.arange(sr*12)/sr; x=(0.3*np.sin(2*np.pi*220*t)*32767).astype('<i2'); w=wave.open('test.wav','wb'); w.setnchannels(1); w.setsampwidth(2); w.setframerate(sr); w.writeframes(x.tobytes()); w.close()"
-          "$ENGINE" separate --input test.wav --start 1 --end 11 --stems vocals,instrumental --device cpu --quality fast --out-dir out | grep -v '"progress"'
-          "$ENGINE" separate --input test.wav --mode cinematic --device auto --quality fast --out-dir out2 | grep -v '"progress"' || echo "auto/GPU path not available on CI runner (expected without a GPU)"
-          ls -la out
+          python -c "import numpy as np, wave; sr=44100; t=np.arange(sr*9)/sr; x=(0.3*np.sin(2*np.pi*220*t)*32767).astype('<i2'); w=wave.open('test.wav','wb'); w.setnchannels(1); w.setsampwidth(2); w.setframerate(sr); w.writeframes(x.tobytes()); w.close()"
+          "$ENGINE" separate --input test.wav --start 1 --end 8 --stems vocals,instrumental --device cpu --quality fast --speed 2 --timeline-duration 3.5 --out-dir out | grep -v '"progress"'
+          "$ENGINE" separate --input test.wav --start 1 --end 8 --mode cinematic --stems dialogue,sfx,music,background --device cpu --quality fast --out-dir out2 | grep -v '"progress"'
+          "$ENGINE" separate --input test.wav --mode music --device auto --quality fast --out-dir out3 | grep -v '"progress"' || echo "GPU path not available on this CI runner (expected without a GPU)"
+          ls -la out out2
+      - name: Sign engine (optional)
+        if: env.WINDOWS_PFX_BASE64 != ''
+        shell: pwsh
+        run: |
+          [IO.File]::WriteAllBytes("cert.pfx", [Convert]::FromBase64String($env:WINDOWS_PFX_BASE64))
+          $signtool = Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\bin\*\x64\signtool.exe" | Select-Object -Last 1
+          & $signtool.FullName sign /f cert.pfx /p $env:WINDOWS_PFX_PASSWORD /fd sha256 /tr http://timestamp.digicert.com /td sha256 "dist\extension\com.bunnysframelab.audioseparator\bin\bunnys-engine\bunnys-engine.exe"
       - name: Build installer
         shell: bash
         run: |
           choco install innosetup -y --no-progress || true
           "/c/Program Files (x86)/Inno Setup 6/ISCC.exe" "//DAppVersion=${{ steps.v.outputs.version }}" installer/windows/setup.iss
+      - name: Sign installer (optional)
+        if: env.WINDOWS_PFX_BASE64 != ''
+        shell: pwsh
+        run: |
+          $signtool = Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\bin\*\x64\signtool.exe" | Select-Object -Last 1
+          & $signtool.FullName sign /f cert.pfx /p $env:WINDOWS_PFX_PASSWORD /fd sha256 /tr http://timestamp.digicert.com /td sha256 (Get-ChildItem dist\*.exe).FullName
+      - name: Package ZIP
+        shell: bash
+        run: python tools/package_release.py --platform windows --installer "$(ls dist/*.exe)" --version "${{ steps.v.outputs.version }}" --label Windows
       - uses: actions/upload-artifact@v4
         with:
           name: windows
-          path: dist/*.exe
+          path: dist/*.zip
 
   macos:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     strategy:
       fail-fast: false
       matrix:
@@ -62,7 +93,14 @@ jobs:
           - runner: macos-15-intel
             arch: Intel
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 60
+    timeout-minutes: 90
+    env:
+      APPLE_INSTALLER_P12_BASE64: ${{ secrets.APPLE_INSTALLER_P12_BASE64 }}
+      APPLE_INSTALLER_P12_PASSWORD: ${{ secrets.APPLE_INSTALLER_P12_PASSWORD }}
+      APPLE_INSTALLER_IDENTITY: ${{ secrets.APPLE_INSTALLER_IDENTITY }}
+      APPLE_ID: ${{ secrets.APPLE_ID }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -75,20 +113,35 @@ jobs:
         run: pip install -r engine/requirements-macos.txt
       - name: Build engine + extension
         run: python engine/build_engine.py
-      - name: Smoke test engine
+      - name: Smoke test engine (both models)
         run: |
           ENGINE="dist/extension/com.bunnysframelab.audioseparator/bin/bunnys-engine/bunnys-engine"
           "$ENGINE" info
-          python -c "import numpy as np, wave; sr=44100; t=np.arange(sr*12)/sr; x=(0.3*np.sin(2*np.pi*220*t)*32767).astype('<i2'); w=wave.open('test.wav','wb'); w.setnchannels(1); w.setsampwidth(2); w.setframerate(sr); w.writeframes(x.tobytes()); w.close()"
-          "$ENGINE" separate --input test.wav --start 1 --end 11 --stems vocals,instrumental --device cpu --quality fast --out-dir out | grep -v '"progress"'
-          "$ENGINE" separate --input test.wav --mode cinematic --device auto --quality fast --out-dir out2 | grep -v '"progress"'
+          python -c "import numpy as np, wave; sr=44100; t=np.arange(sr*9)/sr; x=(0.3*np.sin(2*np.pi*220*t)*32767).astype('<i2'); w=wave.open('test.wav','wb'); w.setnchannels(1); w.setsampwidth(2); w.setframerate(sr); w.writeframes(x.tobytes()); w.close()"
+          "$ENGINE" separate --input test.wav --start 1 --end 8 --stems vocals,instrumental --device cpu --quality fast --speed 0.5 --reverse --timeline-duration 14 --out-dir out | grep -v '"progress"'
+          "$ENGINE" separate --input test.wav --start 1 --end 8 --mode cinematic --stems dialogue,sfx,music --device auto --quality fast --out-dir out2 | grep -v '"progress"'
           ls -la out out2
       - name: Build pkg
         run: bash installer/macos/build_pkg.sh "${{ steps.v.outputs.version }}" "${{ matrix.arch }}"
+      - name: Sign + notarize pkg (optional)
+        if: env.APPLE_INSTALLER_P12_BASE64 != ''
+        run: |
+          echo "$APPLE_INSTALLER_P12_BASE64" | base64 --decode > cert.p12
+          security create-keychain -p ci build.keychain
+          security default-keychain -s build.keychain
+          security unlock-keychain -p ci build.keychain
+          security import cert.p12 -k build.keychain -P "$APPLE_INSTALLER_P12_PASSWORD" -T /usr/bin/productsign
+          security set-key-partition-list -S apple-tool:,apple: -s -k ci build.keychain
+          PKG="$(ls dist/*.pkg)"
+          productsign --sign "$APPLE_INSTALLER_IDENTITY" "$PKG" signed.pkg && mv signed.pkg "$PKG"
+          xcrun notarytool submit "$PKG" --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" --password "$APPLE_APP_PASSWORD" --wait
+          xcrun stapler staple "$PKG"
+      - name: Package ZIP
+        run: python tools/package_release.py --platform macos --installer "$(ls dist/*.pkg)" --version "${{ steps.v.outputs.version }}" --label "macOS-${{ matrix.arch }}"
       - uses: actions/upload-artifact@v4
         with:
           name: macos-${{ matrix.arch }}
-          path: dist/*.pkg
+          path: dist/*.zip
 
   release:
     needs: [windows, macos]

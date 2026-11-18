@@ -16,15 +16,18 @@ permissions:
 
 env:
   MSST_RELEASE: https://github.com/ZFTurbo/Music-Source-Separation-Training/releases/download/v.1.0.3
+  MSST_COMMIT: 1f700c386e0dd763fe0a57242bb9420dce987354
+  BANDIT_YAML_SHA256: c62d316a8ac066b78120f648665b81d33b507d25e2d9096f048ccc1bd91b1a78
+  BANDIT_CHPT_SHA256: c48284779f7d1258a6527d3aaa18a532d45c1f506e2dcc25d5ab179a8c5e2573
 
 jobs:
   export:
     runs-on: ubuntu-latest
     timeout-minutes: 120
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: "3.11"
 
@@ -40,7 +43,13 @@ jobs:
           mkdir -p ext
           curl -sSfL -o ext/bandit.yaml "$MSST_RELEASE/config_dnr_bandit_bsrnn_multi_mus64.yaml"
           curl -sSfL -o ext/bandit.chpt "$MSST_RELEASE/model_bandit_plus_dnr_sdr_11.47.chpt"
-          git clone --depth 1 https://github.com/ZFTurbo/Music-Source-Separation-Training ext/mss
+          # refuse to continue unless the files are exactly the ones that were reviewed
+          echo "$BANDIT_YAML_SHA256  ext/bandit.yaml" | sha256sum -c -
+          echo "$BANDIT_CHPT_SHA256  ext/bandit.chpt" | sha256sum -c -
+          # pinned commit, not a moving branch
+          git clone https://github.com/ZFTurbo/Music-Source-Separation-Training ext/mss
+          git -C ext/mss checkout --detach "$MSST_COMMIT"
+          test "$(git -C ext/mss rev-parse HEAD)" = "$MSST_COMMIT"
 
       - name: Export to ONNX (with built-in verification)
         run: |
